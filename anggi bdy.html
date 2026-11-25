@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Selamat Ulang Tahun 🎂</title>
+<style>
+  html,body{height:100%;margin:0;background:#050d24;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+  body{background:radial-gradient(ellipse at 50% 100%,#0f4c9a 0%,#050d24 70%)}
+  canvas{position:fixed;inset:0;width:100%;height:100%}
+  #ui{position:fixed;left:0;right:0;top:0;text-align:center;padding:18px 16px;pointer-events:none}
+  #ui>*{pointer-events:auto}
+  h1{margin:0 0 6px;font-size:clamp(22px,6vw,38px);text-shadow:0 2px 12px #5aa9ff}
+  #hint{margin:0 0 10px;opacity:.85;font-size:15px;min-height:22px}
+  button{background:#2f7bff;border:0;color:#fff;border-radius:999px;padding:10px 18px;font-size:16px;margin:6px 4px 0;cursor:pointer;font-weight:600}
+  button.alt{background:#ffffff26}
+  #bar{width:160px;height:6px;margin:10px auto 0;background:#ffffff22;border-radius:9px;overflow:hidden}
+  #lvl{height:100%;width:0;background:#7ee8ff}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1 id="title">HABEDEH MBAH TUEK...Anggi </h1>
+  <p id="hint">Tekan Mulai 🎶</p>
+  <div>
+    <button id="start">▶ Mulai &amp; Nyalakan Mic</button>
+    <button id="hold" class="alt">💨 Tiup (tanpa mic)</button>
+    <button id="reset" class="alt">🔁 Nyalakan lagi</button>
+  </div>
+  <div id="bar"><div id="lvl"></div></div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,DPR;
+function resize(){DPR=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+
+const N=5;
+let flames=[],smoke=[],confetti=[],blow=0,manual=false,done=false,t=0;
+function resetFlames(){flames=Array.from({length:N},(_,i)=>({lit:true,power:0,need:0.7+Math.random()*0.7,ph:Math.random()*9}));smoke=[];confetti=[];done=false;document.getElementById('hint').textContent='Tiup lilinnya! 💨'}
+resetFlames();
+
+// ---------- Mic ----------
+let actx,analyser,buf,micOn=false;
+async function startMic(){
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const src=actx.createMediaStreamSource(s);
+    analyser=actx.createAnalyser();analyser.fftSize=1024;src.connect(analyser);
+    buf=new Float32Array(analyser.fftSize);micOn=true;
+    document.getElementById('hint').textContent='tiup lilinnya ke arah mic ndul';
+  }catch(e){document.getElementById('hint').textContent='Mic tidak bisa diakses, pakai tombol “Tiup” ya 👇'}
+}
+function readBlow(){
+  if(!micOn)return 0;
+  analyser.getFloatTimeDomainData(buf);
+  let sum=0;for(const v of buf)sum+=v*v;
+  const rms=Math.sqrt(sum/buf.length);
+  // 0.02 = batas minimal (naikin kalau terlalu sensitif), 0.14 = rentang tiupan
+  return Math.max(0,Math.min(1,(rms-0.02)/0.14));
+}
+
+// ---------- Lagu Happy Birthday (WebAudio) ----------
+let master;
+const F={G4:392,A4:440,B4:493.88,C5:523.25,D5:587.33,E5:659.25,F5:698.46,G5:783.99};
+const song=[['G4',.75],['G4',.25],['A4',1],['G4',1],['C5',1],['B4',2],
+['G4',.75],['G4',.25],['A4',1],['G4',1],['D5',1],['C5',2],
+['G4',.75],['G4',.25],['G5',1],['E5',1],['C5',1],['B4',1],['A4',1],
+['F5',.75],['F5',.25],['E5',1],['C5',1],['D5',1],['C5',2]];
+function playSong(){
+  master=actx.createGain();master.gain.value=.35;master.connect(actx.destination);
+  let at=actx.currentTime+.2;const beat=.55;
+  for(const [n,b] of song){
+    const d=b*beat;
+    for(const [type,mul,vol] of [['triangle',1,1],['sine',2,.25]]){
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type=type;o.frequency.value=F[n]*mul;
+      g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(vol*.6,at+.02);
+      g.gain.exponentialRampToValueAtTime(.001,at+d*.95);
+      o.connect(g);g.connect(master);o.start(at);o.stop(at+d);
+    }
+    at+=d;
+  }
+}
+function stopSong(){if(master){master.gain.cancelScheduledValues(actx.currentTime);master.gain.setTargetAtTime(0,actx.currentTime,.15)}}
+
+// ---------- Tombol ----------
+document.getElementById('start').onclick=async()=>{
+  actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+  await actx.resume();
+  playSong();
+  if(!micOn)await startMic();
+  document.getElementById('start').textContent='▶ Putar lagu lagi';
+};
+const hold=document.getElementById('hold');
+['pointerdown'].forEach(e=>hold.addEventListener(e,ev=>{ev.preventDefault();manual=true}));
+['pointerup','pointerleave','pointercancel'].forEach(e=>hold.addEventListener(e,()=>manual=false));
+document.getElementById('reset').onclick=()=>{resetFlames();stopSong()};
+
+// ---------- Gambar ----------
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+function cakeGeom(){
+  const w=Math.min(W*.82,380),cx=W/2,base=H*.88;
+  return{w,cx,base,h1:w*.28,h2:w*.24};
+}
+function candleX(g,i){return g.cx-g.w*.3+i*(g.w*.6/(N-1))}
+function drawCake(g){
+  const{w,cx,base,h1,h2}=g;
+  ctx.fillStyle='#dbe9ff';ctx.beginPath();ctx.ellipse(cx,base+4,w*.62,14,0,0,7);ctx.fill();
+  const w1=w,y1=base-h1;
+  ctx.fillStyle='#2f7bff';rr(cx-w1/2,y1,w1,h1,14);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.moveTo(cx-w1/2,y1+12);
+  for(let i=0;i<=8;i++){const x=cx-w1/2+i*w1/8;ctx.quadraticCurveTo(x+w1/16,y1+12+(i%2?26:12),x+w1/8,y1+12)}
+  ctx.lineTo(cx+w1/2,y1);ctx.lineTo(cx-w1/2,y1);ctx.fill();
+  const w2=w*.72,y2=y1-h2;
+  ctx.fillStyle='#7fb8ff';rr(cx-w2/2,y2,w2,h2,12);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.moveTo(cx-w2/2,y2+10);
+  for(let i=0;i<=6;i++){const x=cx-w2/2+i*w2/6;ctx.quadraticCurveTo(x+w2/12,y2+10+(i%2?22:10),x+w2/6,y2+10)}
+  ctx.lineTo(cx+w2/2,y2);ctx.lineTo(cx-w2/2,y2);ctx.fill();
+  for(let i=0;i<7;i++){const x=cx-w1/2+w1*(i+.5)/7;ctx.fillStyle='#1e3a8a';ctx.beginPath();ctx.arc(x,y1+h1-16,7,0,7);ctx.fill()}
+  g.top=y2;
+}
+function drawCandles(g){
+  const cols=['#7ee8ff','#bcd9ff','#4da3ff','#a5f3fc','#93a8ff'];
+  for(let i=0;i<N;i++){
+    const x=candleX(g,i),yb=g.top+6,yt=yb-g.w*.2;
+    ctx.fillStyle=cols[i%5];rr(x-5,yt,10,yb-yt,3);ctx.fill();
+    ctx.fillStyle='#ffffff66';for(let k=0;k<3;k++){ctx.save();ctx.translate(x,yt+10+k*14);ctx.rotate(-.5);ctx.fillRect(-5,0,10,4);ctx.restore()}
+    ctx.strokeStyle='#333';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,yt);ctx.lineTo(x,yt-5);ctx.stroke();
+    g['y'+i]=yt-5;
+  }
+}
+function drawFlame(x,y,f,i){
+  const fl=1+Math.sin(t*14+f.ph)*.08+Math.sin(t*23+f.ph*2)*.05;
+  const squish=1-Math.min(.55,blow*.6);
+  const hh=30*fl*squish,lean=blow*22+Math.sin(t*9+f.ph)*(2+blow*6);
+  const gl=ctx.createRadialGradient(x,y-hh/2,2,x,y-hh/2,70);
+  gl.addColorStop(0,'rgba(255,190,80,.45)');gl.addColorStop(1,'rgba(255,190,80,0)');
+  ctx.fillStyle=gl;ctx.beginPath();ctx.arc(x,y-hh/2,70,0,7);ctx.fill();
+  const body=(sc,c1,c2)=>{
+    const g=ctx.createLinearGradient(x,y,x,y-hh*sc);g.addColorStop(0,c1);g.addColorStop(1,c2);
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x,y);
+    ctx.bezierCurveTo(x-9*sc,y-hh*.3*sc,x-5*sc+lean*.3,y-hh*.7*sc,x+lean*sc,y-hh*sc);
+    ctx.bezierCurveTo(x+5*sc+lean*.3,y-hh*.7*sc,x+9*sc,y-hh*.3*sc,x,y);ctx.fill();
+  };
+  body(1,'#ff9a1f','#ffe36b');
+  body(.55,'#9fd8ff','#ffffff');
+}
+function drawSmoke(){
+  for(const s of smoke){
+    s.life-=.012;s.y-=s.vy;s.x+=Math.sin(t*3+s.ph)*.6+s.vx;s.r+=.25;
+    ctx.fillStyle=`rgba(220,220,230,${Math.max(0,s.life)*.35})`;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,7);ctx.fill();
+  }
+  smoke=smoke.filter(s=>s.life>0);
+}
+function drawConfetti(){
+  for(const p of confetti){
+    p.y+=p.vy;p.x+=p.vx+Math.sin(t*3+p.ph);p.rot+=p.vr;
+    ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillStyle=p.c;ctx.fillRect(-4,-2,8,4);ctx.restore();
+  }
+  confetti=confetti.filter(p=>p.y<H+20);
+}
+function burstConfetti(){
+  const cols=['#2f7bff','#7ee8ff','#bcd9ff','#4da3ff','#ffffff'];
+  for(let i=0;i<160;i++)confetti.push({x:Math.random()*W,y:-10-Math.random()*H*.5,vx:(Math.random()-.5)*1.5,vy:1.5+Math.random()*3,rot:0,vr:(Math.random()-.5)*.3,ph:Math.random()*9,c:cols[i%5]});
+}
+
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;
+  let raw=manual?1:readBlow();
+  blow+=(raw-blow)*(raw>blow?.35:.08);
+  document.getElementById('lvl').style.width=(blow*100)+'%';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#ffffff55';for(let i=0;i<40;i++){ctx.fillRect((i*137.5)%W,(i*71.3)%(H*.6),2,2)}
+  const g=cakeGeom();drawCake(g);drawCandles(g);
+
+  flames.forEach((f,i)=>{
+    if(!f.lit)return;
+    const x=candleX(g,i),y=g['y'+i];
+    if(blow>.3)f.power+=blow*dt;else f.power=Math.max(0,f.power-dt*.6);
+    if(f.power>f.need){
+      f.lit=false;
+      for(let k=0;k<14;k++)smoke.push({x:x+(Math.random()-.5)*4,y:y-4,vx:(Math.random()-.5)*.3,vy:.6+Math.random()*.8,r:3+Math.random()*3,life:1+Math.random()*.4,ph:Math.random()*9});
+    }else drawFlame(x,y,f,i);
+  });
+  drawSmoke();
+
+  if(!done&&flames.every(f=>!f.lit)){
+    done=true;stopSong();burstConfetti();
+    document.getElementById('hint').textContent='Make a wish! Semoga semua harapan lo yang aneh maupun yang bener terkabul y... Aamiin';
+  }
+  drawConfetti();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
